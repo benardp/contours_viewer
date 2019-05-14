@@ -42,7 +42,7 @@ set(FULL_WARNINGS
 add_flags(CMAKE_CXX_FLAGS -std=c++11 -Wno-c++98-compat -Wno-gnu-zero-variadic-macro-arguments)
 
 # Compile with full warnings by default
-add_definitions(${FULL_WARNINGS})
+add_definitions(${NORMAL_WARNINGS})
 
 # Run the static analyzer
 if(VORPALINE_WITH_CLANGSA)

@@ -404,7 +404,7 @@ void Viewer::draw_scene() {
     if (m_compute_visibility) { // EDGES
       glupBegin(GLUP_LINES);
       glupColor3f(contourColor.x(), contourColor.y(), contourColor.z());
-      for (size_t j = 0; j < contours.cols(); j++) {
+      for (int j = 0; j < contours.cols(); j++) {
         glupVertex4f(contours.col(j - 1).x(), contours.col(j - 1).y(),
                      contours.col(j - 1).z(), 1.0f);
 
