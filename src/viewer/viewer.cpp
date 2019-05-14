@@ -330,6 +330,14 @@ void Viewer::draw_object_properties() {
 void Viewer::draw_about() {
   ImGui::Separator();
   if (ImGui::BeginMenu("About...")) {
+    ImGui::Text("This viewer has been developped in support of the tutorial:");
+    ImGui::Text("\"Line Drawings from 3D Models\"");
+    ImGui::Text("by Pierre Bénard and Aaron Hertzmann");
+    ImGui::Text("https://arxiv.org/abs/1810.01175");
+    ImGui::Separator();
+    ImGui::Text("The code is based on GEOGRAM:");
+    ImGui::Text("http://alice.loria.fr/software/geogram");
+    ImGui::EndMenu();
   }
 }
 
