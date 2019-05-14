@@ -210,7 +210,7 @@
     <script>
 
           (function() {
-            var memoryInitializer = 'contours.js.mem';
+            var memoryInitializer = '%EXENAME%.js.mem';
             if (typeof Module['locateFile'] === 'function') {
               memoryInitializer = Module['locateFile'](memoryInitializer);
             } else if (Module['memoryInitializerPrefixURL']) {
@@ -223,7 +223,7 @@
           })();
 
           var script = document.createElement('script');
-          script.src = "contours.js";
+          script.src = "%EXENAME%.js";
           document.body.appendChild(script);
 
 </script>
@@ -278,7 +278,7 @@ document.onkeydown = function (e) {
 };
 </script>
 
-<script async type="text/javascript" src="contours_data.js"></script>
+<!-- DATAFILE -->
 
 
 Built with <a href="http://alice.loria.fr/software/geogram/doc/html/index.html">GEOGRAM</a>, compiled from C++ to Javascript using <a href="http://emscripten.org">Emscripten</a>. 

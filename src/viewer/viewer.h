@@ -38,13 +38,16 @@ private:
       m_build_view_graph, m_visible_only, m_boundaries, m_surfintersect,
       m_surface_intersections, m_debug_points, algo_pane_visible_;
 
-  int m_ContourMode, m_prev_ContourMode, m_CameraMode;
+  int m_ContourMode, m_prev_ContourMode, m_CameraMode, m_prev_CameraMode;
 
   float m_linewidth, m_pointSize, m_normal_length;
 
   Mesh *m_mesh, *m_backup_mesh;
 
   Matrix4f m_modelview, m_projection;
+  Eigen::Matrix<float, 3, 1> m_trans[2];
+  Eigen::Matrix<float, 4, 1> m_rot[2];
+  float m_zoom[2];
 };
 
 #endif // _VIEWER_H

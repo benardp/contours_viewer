@@ -277,6 +277,20 @@ float* glup_viewer_get_scene_translation() {
     return cur_xlat;
 }
 
+void glup_viewer_set_scene_quaternion(float* rot) {
+    unsigned int i;
+    for(i = 0; i < 4; i++) {
+        cur_rot[i] = rot[i];
+    }
+}
+
+void glup_viewer_set_scene_translation(float* xlat) {
+    unsigned int i;
+    for(i = 0; i < 3; i++) {
+        cur_xlat[i] = xlat[i];
+    }
+}
+
 float* glup_viewer_get_light_quaternion() {
     return cur_rot_light;
 }
@@ -920,12 +934,12 @@ static void actually_render_display(double offset) {
     GLfloat light_pos_transformed[4];
     
     /* field of view of the larger dimension in degrees */
-    float camera_aperture = 9.0f;
+    float camera_aperture = 25.0f;
 
     float zoom = params[GLUP_VIEWER_ZOOM];
-    float zNear = 1.0f;                /* near clipping plane     */
+    float zNear = 0.5f;                /* near clipping plane     */
     float zFar = 10.0f;                /* far clipping plane      */
-    float zScreen = 5.0f;              /* screen projection plane */
+    float zScreen = 2.0f * zoom;       /* screen projection plane */
 
     /* half of the distance between the eyes, if in stereo mode */
     float eye_offset = (float) offset;
@@ -971,8 +985,8 @@ static void actually_render_display(double offset) {
             right = vue_max_size;
             top = right / aspect;
         }
-        right /= zoom;
-        top /= zoom;
+        // right /= zoom;
+        // top /= zoom;
         glupFrustum(
             (double)(-right - vue_shift), (double)(right - vue_shift),
             (double)(-top), (double)(top),

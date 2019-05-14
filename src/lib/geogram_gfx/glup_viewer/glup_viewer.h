@@ -231,7 +231,9 @@ extern GLUP_VIEWER_API GLfloat* glup_viewer_get_background_color(void);
 extern GLUP_VIEWER_API GLfloat* glup_viewer_get_background_color2(void);
 
 extern GLUP_VIEWER_API float* glup_viewer_get_scene_quaternion(void);
+extern GLUP_VIEWER_API void   glup_viewer_set_scene_quaternion(float*);
 extern GLUP_VIEWER_API float* glup_viewer_get_scene_translation(void);
+extern GLUP_VIEWER_API void   glup_viewer_set_scene_translation(float*);
 extern GLUP_VIEWER_API float* glup_viewer_get_light_matrix(void);
 extern GLUP_VIEWER_API float* glup_viewer_get_light_quaternion(void);
 extern GLUP_VIEWER_API float* glup_viewer_get_clip_quaternion(void);
@@ -252,8 +254,8 @@ extern GLUP_VIEWER_API int glup_viewer_fps(void);
 
 extern GLUP_VIEWER_API void glup_viewer_redraw(void);
 
-extern GLUP_VIEWER_API GLdouble* glup_viewer_get_saved_modelview_matrix();
-extern GLUP_VIEWER_API GLdouble* glup_viewer_get_saved_projection_matrix();
+extern GLUP_VIEWER_API GLdouble* glup_viewer_get_saved_modelview_matrix(void);
+extern GLUP_VIEWER_API GLdouble* glup_viewer_get_saved_projection_matrix(void);
 extern GLUP_VIEWER_API void glup_viewer_save_transform_for_picking(void);
 extern GLUP_VIEWER_API void glup_viewer_get_picked_ray(
     GLdouble* p, GLdouble* v

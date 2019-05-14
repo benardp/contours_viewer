@@ -47,6 +47,7 @@ Viewer::Viewer(int argc, char **argv, const std::string &usage)
   m_ContourMode = 0;
   m_prev_ContourMode = -1;
   m_CameraMode = 0;
+  m_prev_CameraMode = 0;
 
 #ifdef GEO_OS_EMSCRIPTEN
   m_linewidth = 2.0f;
@@ -54,7 +55,7 @@ Viewer::Viewer(int argc, char **argv, const std::string &usage)
   m_linewidth = 1.0f;
 #endif
   m_pointSize = 8.0f;
-  m_normal_length = 0.05f;
+  m_normal_length = 0.01f;
 }
 
 bool Viewer::load(const std::string &filename) {
@@ -148,7 +149,16 @@ void Viewer::init_graphics() {
   glup_viewer_add_toggle('n', &m_normals, "show normals");
   glup_viewer_add_toggle('o', &m_contours, "show contours");
   glup_viewer_add_toggle('d', &m_debug_points, "show debug points");
+
   setStyle();
+
+  for (unsigned int i = 0; i < 2; i++) {
+    m_trans[i] = Eigen::Map<Eigen::Matrix<float, 3, 1>>(
+        glup_viewer_get_scene_translation());
+    m_rot[i] = Eigen::Map<Eigen::Matrix<float, 4, 1>>(
+        glup_viewer_get_scene_quaternion());
+    m_zoom[i] = glup_viewer_get_float(GLUP_VIEWER_ZOOM);
+  }
 }
 
 void Viewer::setStyle() {
@@ -314,7 +324,7 @@ void Viewer::draw_object_properties() {
 #endif
   ImGui::SliderFloat("pt. sz.", &m_pointSize, 1.f, 20.0f, "%.1f");
   if (m_normals)
-    ImGui::SliderFloat("n. wid", &m_normal_length, 0.001f, 1.f, "%.01f");
+    ImGui::SliderFloat("n. wid", &m_normal_length, 0.001f, 1.f, "%.3f");
 }
 
 void Viewer::draw_about() {
@@ -328,22 +338,42 @@ void Viewer::draw_scene() {
     return;
   }
 
+  // Switch cameras
+  if (m_CameraMode != m_prev_CameraMode) {
+    glup_viewer_set_scene_translation(m_trans[m_CameraMode].data());
+    glup_viewer_set_scene_quaternion(m_rot[m_CameraMode].data());
+    glup_viewer_set_float(GLUP_VIEWER_ZOOM, m_zoom[m_CameraMode]);
+    m_prev_CameraMode = m_CameraMode;
+    return;
+  } else {
+    m_trans[m_CameraMode] = Eigen::Map<Eigen::Matrix<float, 3, 1>>(
+        glup_viewer_get_scene_translation());
+    m_rot[m_CameraMode] = Eigen::Map<Eigen::Matrix<float, 4, 1>>(
+        glup_viewer_get_scene_quaternion());
+    m_zoom[m_CameraMode] = glup_viewer_get_float(GLUP_VIEWER_ZOOM);
+  }
+
   SimpleMeshApplication::draw_scene();
 
-  if (m_mesh == nullptr || m_ContourMode != m_prev_ContourMode ||
-      m_CameraMode == 0) {
+  // Update contours
+  if (m_mesh == nullptr || m_ContourMode != m_prev_ContourMode) {
+    if (m_CameraMode == 0) {
+      m_modelview = Eigen::Map<Matrix4f>(glup_viewer_get_saved_modelview_matrix());
+      m_projection = Eigen::Map<Matrix4f>(glup_viewer_get_saved_projection_matrix());
+    }
+    extractContours(m_modelview.inverse().topRightCorner(3, 1));
+    m_prev_ContourMode = m_ContourMode;
+  } else if (m_CameraMode == 0) {
     Eigen::Map<Matrix4f> modelview =
         Eigen::Map<Matrix4f>(glup_viewer_get_saved_modelview_matrix());
     Eigen::Map<Matrix4f> projection =
         Eigen::Map<Matrix4f>(glup_viewer_get_saved_projection_matrix());
     if (!modelview.isApprox(m_modelview) ||
-        !projection.isApprox(m_projection) ||
-        m_ContourMode != m_prev_ContourMode || m_mesh == nullptr) {
-      extractContours(m_modelview.inverse().topRightCorner(3, 1));
+        !projection.isApprox(m_projection)) {
+      extractContours(modelview.inverse().topRightCorner(3, 1));
       m_modelview = modelview;
       m_projection = projection;
     }
-    m_prev_ContourMode = m_ContourMode;
   }
 
   glLineWidth(m_linewidth);
@@ -447,23 +477,61 @@ void Viewer::draw_scene() {
     glupEnd();
   }
 
-  // if (m_draw_camera && m_current_camera != &m_contour_camera) {
-  //   m_shader_camera.bind();
-  //   Eigen::Matrix4f mv2 =
-  //       mv * m_contour_camera.frame().getMatrix().cast<float>();
-  //   m_shader_camera.setUniform("modelview_mat", mv2);
-  //   m_shader_camera.setUniform("proj_mat", p);
-  //   m_shader_camera.setUniform("viewport", Vector2f(mFBSize.x(),
-  //   mFBSize.y())); m_shader_camera.setUniform("color", wireframeColor);
-  //   m_shader_camera.setUniform("linewidth",
-  //                              2.5f * mPixelRatio * m_linewidth->value());
-  //   m_shader_camera.setUniform("antialias", 1.0f);
-  //   m_shader_camera.drawArray(GL_LINES, 0,
-  //   m_contour_camera.getPoints().cols());
-  // }
+  // Draw camera in side-view mode
+  if (m_CameraMode == 1) {
+    Matrix4f inverse_modelview = m_modelview.inverse();
+    int mVpWidth, mVpHeight;
+    glup_viewer_get_screen_size(&mVpWidth, &mVpHeight);
+    float ym = tan(25.f * (float)M_PI / 360.0f);
+    float xm = float(mVpWidth) * (ym * 1.0 / float(mVpHeight));
+    float zm = 0.25f;
+
+    glupPushMatrix();
+    glupMultMatrixd(inverse_modelview.data());
+
+    glupBegin(GLUP_LINES);
+    glupColor3f(wireframeColor.x(), wireframeColor.y(), wireframeColor.z());
+
+    glupVertex4f(0.f, 0.f, 0.f, 1.f);
+    glupVertex4f(xm, ym, -zm, 1.f);
+    glupVertex4f(xm, ym, -zm, 1.f);
+    glupVertex4f(xm, -ym, -zm, 1.f);
+    glupVertex4f(xm, -ym, -zm, 1.f);
+    glupVertex4f(0.f, 0.f, 0.f, 1.f);
+    glupVertex4f(0.f, 0.f, 0.f, 1.f);
+    glupVertex4f(-xm, ym, -zm, 1.f);
+    glupVertex4f(-xm, ym, -zm, 1.f);
+    glupVertex4f(-xm, -ym, -zm, 1.f);
+    glupVertex4f(-xm, -ym, -zm, 1.f);
+    glupVertex4f(0.f, 0.f, 0.f, 1.f);
+    glupVertex4f(0.f, 0.f, 0.f, 1.f);
+    glupVertex4f(xm, ym, -zm, 1.f);
+    glupVertex4f(xm, ym, -zm, 1.f);
+    glupVertex4f(-xm, ym, -zm, 1.f);
+    glupVertex4f(-xm, ym, -zm, 1.f);
+    glupVertex4f(0.f, 0.f, 0.f, 1.f);
+    glupVertex4f(0.f, 0.f, 0.f, 1.f);
+    glupVertex4f(xm, -ym, -zm, 1.f);
+    glupVertex4f(xm, -ym, -zm, 1.f);
+    glupVertex4f(-xm, -ym, -zm, 1.f);
+    glupVertex4f(-xm, -ym, -zm, 1.f);
+    glupVertex4f(0.f, 0.f, 0.f, 1.f);
+    glupVertex4f(-xm, ym, -zm, 1.f);
+    glupEnd();
+
+    glupBegin(GLUP_TRIANGLES);
+    glupColor3f(wireframeColor.x(), wireframeColor.y(), wireframeColor.z());
+    glupVertex4f(-0.65 * xm, 1.1f * ym, -zm, 1.f);
+    glupVertex4f(0.f, 1.5f * ym, -zm, 1.f);
+    glupVertex4f(0.65 * xm, 1.1f * ym, -zm, 1.f);
+    glupEnd();
+
+    glupPopMatrix();
+  }
 
   // Draw debug points
-  if (m_3D_intersections || m_2D_intersections || m_curtain_folds) {
+  if (m_build_view_graph &&
+      (m_3D_intersections || m_2D_intersections || m_curtain_folds)) {
 
     nature_t nature = VertexNature::S_VERTEX;
     if (m_3D_intersections)
