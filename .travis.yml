@@ -9,7 +9,7 @@ services:
 
 before_install:
   - env | grep -vE "^(PATH=)" > .env
-  - docker run -dit -e --name emscripten -v $(pwd):/src trzeci/emscripten:sdk-tag-1.38.11-64bit bash
+  - docker run -dit --env-file .env --name emscripten -v $(pwd):/src trzeci/emscripten:sdk-tag-1.38.11-64bit bash
 
 
 script:
