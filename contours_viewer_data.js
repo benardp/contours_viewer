@@ -18,8 +18,8 @@ Module.expectedDataFileDownloads++;
     } else {
       throw 'using preloaded data can only be done on a web page or in a web worker';
     }
-    var PACKAGE_NAME = 'contours_data.data';
-    var REMOTE_PACKAGE_BASE = 'contours_data.data';
+    var PACKAGE_NAME = 'contours_viewer_data.data';
+    var REMOTE_PACKAGE_BASE = 'contours_viewer_data.data';
     if (typeof Module['locateFilePackage'] === 'function' && !Module['locateFile']) {
       Module['locateFile'] = Module['locateFilePackage'];
       err('warning: you defined Module.locateFilePackage, that has been renamed to Module.locateFile (using your locateFilePackage for now)');
@@ -150,10 +150,10 @@ Module.expectedDataFileDownloads++;
           for (var i = 0; i < files.length; ++i) {
             DataRequest.prototype.requests[files[i].filename].onload();
           }
-              Module['removeRunDependency']('datafile_contours_data.data');
+              Module['removeRunDependency']('datafile_contours_viewer_data.data');
 
     };
-    Module['addRunDependency']('datafile_contours_data.data');
+    Module['addRunDependency']('datafile_contours_viewer_data.data');
   
     if (!Module.preloadResults) Module.preloadResults = {};
   
@@ -174,7 +174,7 @@ Module.expectedDataFileDownloads++;
   }
 
  }
- loadPackage({"files": [{"start": 0, "audio": 0, "end": 354728, "filename": "/pig.obj"}], "remote_package_size": 354728, "package_uuid": "58a551d3-ce79-4e4c-8dc0-5591c38194c4"});
+ loadPackage({"files": [{"start": 0, "audio": 0, "end": 354728, "filename": "/pig.obj"}], "remote_package_size": 354728, "package_uuid": "4a2c71ad-fa45-4cc3-9923-983ba786b4c5"});
 
 })();
 
