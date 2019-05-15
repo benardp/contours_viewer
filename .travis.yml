@@ -12,7 +12,7 @@ before_install:
 
 script:
   - docker exec -it emscripten bash ./tools/compile.sh
-  - ./tools/deploy.sh
+  - bash ./tools/deploy.sh
 
 env:
   global:
