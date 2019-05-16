@@ -174,7 +174,7 @@ Module.expectedDataFileDownloads++;
   }
 
  }
- loadPackage({"files": [{"start": 0, "audio": 0, "end": 354728, "filename": "/pig.obj"}], "remote_package_size": 354728, "package_uuid": "4a2c71ad-fa45-4cc3-9923-983ba786b4c5"});
+ loadPackage({"files": [{"start": 0, "audio": 0, "end": 354728, "filename": "/pig.obj"}], "remote_package_size": 354728, "package_uuid": "105d17b4-4a23-4810-a4b7-0724b8dd0f11"});
 
 })();
 
