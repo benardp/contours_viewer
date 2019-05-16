@@ -934,10 +934,10 @@ static void actually_render_display(double offset) {
     GLfloat light_pos_transformed[4];
     
     /* field of view of the larger dimension in degrees */
-    float camera_aperture = 25.0f;
+    float camera_aperture = 5.0f;
 
     float zoom = params[GLUP_VIEWER_ZOOM];
-    float zNear = 0.5f;                /* near clipping plane     */
+    float zNear = 0.1f;                /* near clipping plane     */
     float zFar = 10.0f;                /* far clipping plane      */
     float zScreen = 2.0f * zoom;       /* screen projection plane */
 

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <geogram_gfx/third_party/ImGui/imgui.h>
+#include <geogram_gfx/third_party/ImGui/imgui_internal.h>
 
 Viewer::Viewer(int argc, char **argv, const std::string &usage)
     : SimpleMeshApplication(argc, argv, usage) {
@@ -25,8 +26,6 @@ Viewer::Viewer(int argc, char **argv, const std::string &usage)
 
   save_dialog_.set_default_filename("out.svg");
 
-  m_debug_points = true;
-
   m_mesh = m_backup_mesh = nullptr;
 
   m_normals = false;
@@ -41,8 +40,10 @@ Viewer::Viewer(int argc, char **argv, const std::string &usage)
   m_visible_only = false;
   m_boundaries = true;
   m_surfintersect = true;
+  m_ray_intersections = false;
   m_surface_intersections = true;
   m_debug_points = true;
+  m_compute_chains = true;
 
   m_ContourMode = 0;
   m_prev_ContourMode = -1;
@@ -104,7 +105,7 @@ bool Viewer::save(const std::string &filename) {
   glup_viewer_get_screen_size(&mSize(1), &mSize(0));
   SVG svgWriter(filename, mSize);
   int start_index = 0;
-  Matrix3Xf contours = m_mesh->get_contours(ContourMode(m_ContourMode), false);
+  Matrix3Xf contours = m_mesh->get_contours(VISIBLE_AND_INVISIBLE);
   int offset = (m_ContourMode == INTERPOLATED_CONTOUR ? 0 : 1);
   std::vector<Vector2f> polyline;
   for (size_t i = 0; i < m_mesh->get_chain_lengths().size(); i++) {
@@ -149,6 +150,7 @@ void Viewer::init_graphics() {
   glup_viewer_add_toggle('n', &m_normals, "show normals");
   glup_viewer_add_toggle('o', &m_contours, "show contours");
   glup_viewer_add_toggle('d', &m_debug_points, "show debug points");
+  glup_viewer_add_toggle('v', &m_visible_only, "visible curves");
 
   setStyle();
 
@@ -278,8 +280,36 @@ void Viewer::draw_left_pane() {
     ImGui::Combo("", (int *)&m_ContourMode, "mesh\0interpolated\0\0");
 
     ImGui::Checkbox("surf. intersect.", &m_surface_intersections);
+
+    if (m_compute_chains) {
+      ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+      ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+    }
+    ImGui::Checkbox("edge visibility", &m_compute_visibility);
+    if (m_compute_chains) {
+      ImGui::PopItemFlag();
+      ImGui::PopStyleVar();
+    }
+
+    if (m_compute_visibility) {
+      ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+      ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+    }
+    ImGui::Checkbox("chaining", &m_compute_chains);
+    if (m_compute_visibility) {
+      ImGui::PopItemFlag();
+      ImGui::PopStyleVar();
+    }
+
+    if (!m_compute_chains) {
+      ImGui::PushItemFlag(ImGuiItemFlags_Disabled, true);
+      ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
+    }
     ImGui::Checkbox("view graph", &m_build_view_graph);
-    ImGui::Checkbox("visibility", &m_compute_visibility);
+    if (!m_compute_chains) {
+      ImGui::PopItemFlag();
+      ImGui::PopStyleVar();
+    }
 
     ImGui::End();
   }
@@ -314,9 +344,15 @@ void Viewer::draw_object_properties() {
   ImGui::Checkbox("contours", &m_contours);
   ImGui::Checkbox("boundaries", &m_boundaries);
   ImGui::Checkbox("surf. intersection", &m_surfintersect);
-  ImGui::Checkbox("3D intersections", &m_3D_intersections);
-  ImGui::Checkbox("2D intersections", &m_2D_intersections);
-  ImGui::Checkbox("curtain folds", &m_curtain_folds);
+  ImGui::Checkbox("visible only [v]", &m_visible_only);
+  ImGui::Separator();
+  ImGui::Checkbox("points [d]", &m_debug_points);
+  if (m_debug_points) {
+    ImGui::Checkbox("3D intersections", &m_3D_intersections);
+    ImGui::Checkbox("2D intersections", &m_2D_intersections);
+    ImGui::Checkbox("curtain folds", &m_curtain_folds);
+    ImGui::Checkbox("ray intersections", &m_ray_intersections);
+  }
 
   ImGui::Separator();
 #ifdef GEO_OS_EMSCRIPTEN
@@ -352,6 +388,7 @@ void Viewer::draw_scene() {
     glup_viewer_set_scene_quaternion(m_rot[m_CameraMode].data());
     glup_viewer_set_float(GLUP_VIEWER_ZOOM, m_zoom[m_CameraMode]);
     m_prev_CameraMode = m_CameraMode;
+    draw_scene();
     return;
   } else {
     m_trans[m_CameraMode] = Eigen::Map<Eigen::Matrix<float, 3, 1>>(
@@ -366,8 +403,10 @@ void Viewer::draw_scene() {
   // Update contours
   if (m_mesh == nullptr || m_ContourMode != m_prev_ContourMode) {
     if (m_CameraMode == 0) {
-      m_modelview = Eigen::Map<Matrix4f>(glup_viewer_get_saved_modelview_matrix());
-      m_projection = Eigen::Map<Matrix4f>(glup_viewer_get_saved_projection_matrix());
+      m_modelview =
+          Eigen::Map<Matrix4f>(glup_viewer_get_saved_modelview_matrix());
+      m_projection =
+          Eigen::Map<Matrix4f>(glup_viewer_get_saved_projection_matrix());
     }
     extractContours(m_modelview.inverse().topRightCorner(3, 1));
     m_prev_ContourMode = m_ContourMode;
@@ -405,84 +444,71 @@ void Viewer::draw_scene() {
     glupEnd();
   }
 
+  auto drawCurve = [&](const Matrix3Xf &curve, int start, int end, int step,
+                       const Vector4f &color) {
+    glupBegin(GLUP_LINES);
+    glupColor3f(color.x(), color.y(), color.z());
+    for (int j = start; j < end; j += step) {
+      glupVertex4f(curve.col(j).x(), curve.col(j).y(), curve.col(j).z(), 1.0f);
+
+      glupVertex4f(curve.col(j + 1).x(), curve.col(j + 1).y(),
+                   curve.col(j + 1).z(), 1.0f);
+    }
+    glupEnd();
+  };
+
   // Draw contours
   if (m_contours) {
-    Matrix3Xf contours =
-        m_mesh->get_contours(ContourMode(m_ContourMode), false);
-    if (m_compute_visibility) { // EDGES
-      glupBegin(GLUP_LINES);
-      glupColor3f(contourColor.x(), contourColor.y(), contourColor.z());
-      for (int j = 0; j < contours.cols(); j++) {
-        glupVertex4f(contours.col(j - 1).x(), contours.col(j - 1).y(),
-                     contours.col(j - 1).z(), 1.0f);
-
-        glupVertex4f(contours.col(j).x(), contours.col(j).y(),
-                     contours.col(j).z(), 1.0f);
+    Matrix3Xf contours;
+    if (!m_compute_chains) {
+      if (m_compute_visibility) { // EDGES
+        contours = m_mesh->get_contours(VISIBLE);
+        drawCurve(contours, 0, contours.cols() - 1, 2, contourColor);
+        if (!m_visible_only) {
+          contours = m_mesh->get_contours(INVISIBLE);
+          drawCurve(contours, 0, contours.cols() - 1, 2, hiddenContourColor);
+        }
+      } else {
+        contours = m_mesh->get_contours(VISIBLE_AND_INVISIBLE);
+        drawCurve(contours, 0, contours.cols() - 1, 2, contourColor);
       }
-      glupEnd();
     } else { // CHAINS
+      contours = m_mesh->get_chains(ContourMode(m_ContourMode));
       int offset = (ContourMode(m_ContourMode) == INTERPOLATED_CONTOUR ? 0 : 1);
-      glupBegin(GLUP_LINES);
       int start_index = 0;
       for (size_t i = 0; i < m_mesh->get_chain_lengths().size(); i++) {
-        glupColor3f(alphabetColors[i % 26].x(), alphabetColors[i % 26].y(),
-                    alphabetColors[i % 26].z());
-        for (size_t j = start_index + 1;
-             j < start_index + m_mesh->get_chain_lengths()[i] + offset; j++) {
-          glupVertex4f(contours.col(j - 1).x(), contours.col(j - 1).y(),
-                       contours.col(j - 1).z(), 1.0f);
-
-          glupVertex4f(contours.col(j).x(), contours.col(j).y(),
-                       contours.col(j).z(), 1.0f);
-        }
+        drawCurve(contours, start_index,
+                  start_index + m_mesh->get_chain_lengths()[i] + offset - 1, 1,
+                  alphabetColors[i % 26]);
         start_index += m_mesh->get_chain_lengths()[i] + offset;
       }
-      glupEnd();
     }
   }
 
   // Draw open boundaries
   if (m_boundaries) {
     Matrix3Xf boundaries = m_mesh->get_boundaries(false);
-    glupBegin(GLUP_LINES);
-    glupColor3f(boundariesColor.x(), boundariesColor.y(), boundariesColor.z());
     int start_index = 0;
     for (size_t i = 0; i < m_mesh->get_boundaries_lengths().size(); i++) {
-      for (size_t j = start_index + 1;
-           j < start_index + m_mesh->get_boundaries_lengths()[i]; j++) {
-        glupVertex4f(boundaries.col(j - 1).x(), boundaries.col(j - 1).y(),
-                     boundaries.col(j - 1).z(), 1.0f);
-
-        glupVertex4f(boundaries.col(j).x(), boundaries.col(j).y(),
-                     boundaries.col(j).z(), 1.0f);
-      }
+      drawCurve(boundaries, start_index,
+                start_index + m_mesh->get_boundaries_lengths()[i] - 1, 1,
+                boundariesColor);
       start_index += m_mesh->get_boundaries_lengths()[i];
     }
-    glupEnd();
   }
 
   // Draw surface-surface intersections
   if (m_surfintersect) {
     Matrix3Xf &surf_intersect = m_mesh->get_surface_intersections();
-    glupBegin(GLUP_LINES);
-    glupColor3f(surfIntersectionsColor.x(), surfIntersectionsColor.y(),
-                surfIntersectionsColor.z());
     int start_index = 0;
     for (size_t i = 0; i < m_mesh->get_surface_intersections_lengths().size();
          i++) {
-      for (size_t j = start_index + 1;
-           j < start_index + m_mesh->get_surface_intersections_lengths()[i];
-           ++j) {
-        glupVertex4f(surf_intersect.col(j - 1).x(),
-                     surf_intersect.col(j - 1).y(),
-                     surf_intersect.col(j - 1).z(), 1.0f);
-
-        glupVertex4f(surf_intersect.col(j).x(), surf_intersect.col(j).y(),
-                     surf_intersect.col(j).z(), 1.0f);
-      }
+      drawCurve(surf_intersect, start_index,
+                start_index + m_mesh->get_surface_intersections_lengths()[i] -
+                    1,
+                1, surfIntersectionsColor);
       start_index += m_mesh->get_surface_intersections_lengths()[i];
     }
-    glupEnd();
   }
 
   // Draw camera in side-view mode
@@ -538,16 +564,20 @@ void Viewer::draw_scene() {
   }
 
   // Draw debug points
-  if (m_build_view_graph &&
-      (m_3D_intersections || m_2D_intersections || m_curtain_folds)) {
+  if (m_debug_points && (m_3D_intersections || m_2D_intersections ||
+                         m_curtain_folds || m_ray_intersections)) {
 
     nature_t nature = VertexNature::S_VERTEX;
-    if (m_3D_intersections)
-      nature = VertexNature::INTERSECTION_3D | nature;
-    if (m_2D_intersections)
-      nature = VertexNature::INTERSECTION_2D | nature;
-    if (m_curtain_folds)
-      nature = VertexNature::CURTAIN_FOLD | nature;
+    if (m_build_view_graph) {
+      if (m_3D_intersections)
+        nature = VertexNature::INTERSECTION_3D | nature;
+      if (m_2D_intersections)
+        nature = VertexNature::INTERSECTION_2D | nature;
+      if (m_curtain_folds)
+        nature = VertexNature::CURTAIN_FOLD | nature;
+    }
+    if (m_ray_intersections)
+      nature = VertexNature::RAY_INTERSECTION | nature;
 
     std::vector<Vector3f> &debug_points = m_mesh->get_debug_points(nature),
                           &debug_points_color = m_mesh->get_point_colors();
@@ -606,11 +636,9 @@ void Viewer::extractContours(const Vector3f &view_pos) {
 
     m_mesh->extractContours(mode, view_pos);
 
-    m_mesh->computeContourChains(mode);
-
-    // GEO::Logger::out("ALGO")
-    //     << m_mesh->get_chain_lengths().size() << " contour chains" <<
-    //     std::endl;
+    if (m_compute_chains) {
+      m_mesh->computeContourChains(mode);
+    }
 
     if (m_build_view_graph) {
       Vector2i mSize;

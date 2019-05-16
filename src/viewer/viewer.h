@@ -35,8 +35,9 @@ private:
 
   bool m_normals, m_surface, m_contours, m_draw_camera, m_2D_intersections,
       m_3D_intersections, m_curtain_folds, m_compute_visibility,
-      m_build_view_graph, m_visible_only, m_boundaries, m_surfintersect,
-      m_surface_intersections, m_debug_points, algo_pane_visible_;
+      m_compute_chains, m_build_view_graph, m_visible_only, m_boundaries,
+      m_surfintersect, m_surface_intersections, m_ray_intersections,
+      m_debug_points, algo_pane_visible_;
 
   int m_ContourMode, m_prev_ContourMode, m_CameraMode, m_prev_CameraMode;
 

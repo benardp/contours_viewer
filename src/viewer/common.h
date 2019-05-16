@@ -68,6 +68,7 @@ using std::endl;
 
 typedef enum { FRONT, BACK, CONTOUR, UNDEFINED } FacingType;
 typedef enum { MESH_CONTOUR, INTERPOLATED_CONTOUR } ContourMode;
+typedef enum { VISIBLE, INVISIBLE,  VISIBLE_AND_INVISIBLE } VisibilityMode;
 
 typedef unsigned short nature_t;
 namespace VertexNature {
@@ -79,6 +80,7 @@ static const nature_t CONTOUR_CURTAIN_FOLD = (1 << 4);
 static const nature_t BIFURCATION = (1 << 5);
 static const nature_t CURTAIN_FOLD =
     BOUNDARY_CURTAIN_FOLD | CONTOUR_CURTAIN_FOLD;
+static const nature_t RAY_INTERSECTION = (1 << 6);
 } // namespace VertexNature
 namespace EdgeNature {
 static const nature_t NO_FEATURE = 0;

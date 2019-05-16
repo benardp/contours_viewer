@@ -15,7 +15,7 @@ class Subdiv;
 class Mesh : public surface_mesh::Surface_mesh {
 
 public:
-  Mesh() : m_bvh(nullptr), m_visible(-1) {}
+  Mesh() : m_bvh(nullptr), m_nb_visible(-1) {}
   Mesh(const std::string &filename);
 
   ~Mesh();
@@ -66,14 +66,6 @@ public:
   void projectSVertices(const Matrix4f &model, const Matrix4f &proj,
                         const Vector2i &viewportSize);
 
-  MatrixXu &get_mesh_contours_indices() { return m_mesh_contours_indices; }
-
-  MapXu get_boundary_indices() {
-    return MapXu(m_boundary_indices.data(), 1, m_boundary_indices.size());
-  }
-
-  Matrix3Xf &get_interpolated_contours() { return m_interpolated_contours; }
-
   std::vector<Vector3f> &get_debug_points(nature_t nature);
 
   std::vector<Vector3f> &get_point_colors() { return m_point_colors; }
@@ -95,9 +87,9 @@ public:
     return MapXu(m_chain_indices.data(), 1, m_chain_indices.size());
   }
 
-  int num_visible_contours() const { return m_visible / 2; }
+  Matrix3Xf get_contours(VisibilityMode visible);
 
-  Matrix3Xf get_contours(ContourMode mode, bool visible_only);
+  Matrix3Xf get_chains(ContourMode mode);
 
   Matrix3Xf get_boundaries(bool visible_only);
 
@@ -146,7 +138,6 @@ private:
   BVH *m_bvh;
 
   // Mesh contours
-  MatrixXu m_mesh_contours_indices;
   std::vector<Edge> m_contour_edges;
   std::vector<std::list<Edge>> m_chains;
   std::vector<int> m_chain_lengths;
@@ -155,6 +146,10 @@ private:
   // Interpolated contours
   Matrix3Xf m_interpolated_contours;
   std::vector<int> m_interpolated_contour_faces;
+  
+  // Visibility
+  std::vector<Vector3f> m_contour_sorted_by_visibility;
+  int m_nb_visible;
 
   // Boundaries
   std::vector<uint32_t> m_boundary_indices;
@@ -173,7 +168,6 @@ private:
 
   std::vector<Vector3f> m_debug_points, m_point_colors;
   std::pair<int, int> m_2D_intersections;
-  int m_visible;
 };
 
 #endif // MESH_H

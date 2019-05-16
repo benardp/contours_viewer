@@ -4,7 +4,7 @@
 
 #include <geogram/numerics/predicates.h>
 
-Mesh::Mesh(const std::string &filename) : m_bvh(nullptr), m_visible(-1) {
+Mesh::Mesh(const std::string &filename) : m_bvh(nullptr), m_nb_visible(-1) {
   load(filename);
 }
 
@@ -167,18 +167,13 @@ void Mesh::extractContours(ContourMode mode, const Vector3f &view_pos) {
         // silhouette edge found
         m_contour_edges.push_back(e);
         is_contour[e] = 1.f;
+        m_contour_sorted_by_visibility.push_back(v1);
+        m_contour_sorted_by_visibility.push_back(v2);
       }
     }
   }
 
-  if (mode == MESH_CONTOUR) {
-    m_mesh_contours_indices = MatrixXu(2, m_contour_edges.size());
-    for (size_t i = 0; i < m_contour_edges.size(); ++i) {
-      m_mesh_contours_indices.col(i) =
-          Vector2u(vertex(m_contour_edges.at(i), 0).idx(),
-                   vertex(m_contour_edges.at(i), 1).idx());
-    }
-  } else {
+  if (mode == INTERPOLATED_CONTOUR) {
     std::vector<std::tuple<Vector3f, Vector3f, int>> contour_pairs;
 
     Halfedge_around_face_circulator hit, hit_end;
@@ -211,9 +206,13 @@ void Mesh::extractContours(ContourMode mode, const Vector3f &view_pos) {
 
     m_interpolated_contours = Matrix3Xf(3, contour_pairs.size() * 2);
     m_interpolated_contour_faces.resize(contour_pairs.size());
+    m_contour_sorted_by_visibility.resize(contour_pairs.size() * 2);
     for (size_t i = 0; i < contour_pairs.size(); ++i) {
       m_interpolated_contours.col(i * 2) = std::get<0>(contour_pairs.at(i));
       m_interpolated_contours.col(i * 2 + 1) = std::get<1>(contour_pairs.at(i));
+      m_contour_sorted_by_visibility[i * 2] = std::get<0>(contour_pairs.at(i));
+      m_contour_sorted_by_visibility[i * 2 + 1] =
+          std::get<1>(contour_pairs.at(i));
       m_interpolated_contour_faces[i] = std::get<2>(contour_pairs.at(i));
     }
   }
@@ -1133,94 +1132,89 @@ void Mesh::computeContourVisibility(const Vector3f &view_pos,
   auto concave = get_edge_property<bool>("e:concave");
   ray_intersections.clear();
 
-  if (mode != INTERPOLATED_CONTOUR) {
-    std::vector<Vector2u> invisible_indices;
-    invisible_indices.reserve(0.5 * m_mesh_contours_indices.size());
-    std::vector<Vector2u> visible_indices;
-    visible_indices.reserve(0.5 * m_mesh_contours_indices.size());
+  std::vector<std::pair<Vector3f, Vector3f>> invisible_edges;
+  std::vector<std::pair<Vector3f, Vector3f>> visible_edges;
 
-    auto visibility = get_edge_property<bool>("e:visible");
-    if (!visibility)
-      visibility = add_edge_property<bool>("e:visible");
+  // Cast a ray in the middle of the p1p2 edge, excluding faces ID1 and ID2
+  auto rayCast = [&](const Vector3f &p1, const Vector3f &p2, int faceID1,
+                     int faceID2) {
+    Vector3f dir = 0.5f * (p1 + p2) - view_pos;
+    uint32_t idx;
+    real_t t;
+    Ray ray = Ray(view_pos, dir.normalized(), 0, dir.norm());
+    bool hit = m_bvh->rayIntersect(ray, idx, t);
+    if (hit && int(idx) != faceID1 && int(idx) != faceID2) {
+      ray_intersections.push_back(ray(t));
+      invisible_edges.push_back(std::make_pair(p1, p2));
+    } else {
+      visible_edges.push_back(std::make_pair(p1, p2));
+    }
+  };
 
+  if (mode == MESH_CONTOUR) {
+    invisible_edges.reserve(0.5 * m_contour_edges.size());
+    visible_edges.reserve(0.5 * m_contour_edges.size());
     auto vpositions = get_vertex_property<Vector3f>("v:point");
     for (uint32_t i = 0; i < m_contour_edges.size(); ++i) {
       Edge e = m_contour_edges[i];
-      const Vector3f &a = vpositions[vertex(e, 0)];
-      const Vector3f &b = vpositions[vertex(e, 1)];
-
+      const Vector3f &p1 = vpositions[vertex(e, 0)];
+      const Vector3f &p2 = vpositions[vertex(e, 1)];
+      // exclude concave edges
       if (concave[e]) {
-        //  ray_intersections.push_back(0.5f * (a + b));
+        invisible_edges.push_back(std::make_pair(p1, p2));
         continue;
       }
-
-      Vector3f dir = real_t(0.5) * (a + b) - view_pos;
-      uint32_t idx;
-      real_t t;
-      visibility[e] = true;
-      Ray ray = Ray(view_pos, dir.normalized(), 0, dir.norm());
-      bool hit = m_bvh->rayIntersect(ray, idx, t);
-      if (hit && int(idx) != face(e, 0).idx() && int(idx) != face(e, 1).idx()) {
-        ray_intersections.push_back(ray(t));
-        visibility[e] = false;
-        invisible_indices.push_back(
-            Vector2u(vertex(e, 0).idx(), vertex(e, 1).idx()));
-      } else {
-        visible_indices.push_back(
-            Vector2u(vertex(e, 0).idx(), vertex(e, 1).idx()));
-      }
+      rayCast(p1, p2, face(e, 0).idx(), face(e, 1).idx());
     }
-
-    m_mesh_contours_indices =
-        MatrixXu(2, visible_indices.size() + invisible_indices.size());
-    for (size_t i = 0; i < visible_indices.size(); ++i)
-      m_mesh_contours_indices.col(i) = visible_indices.at(i);
-    for (size_t i = 0; i < invisible_indices.size(); ++i)
-      m_mesh_contours_indices.col(i + visible_indices.size()) =
-          invisible_indices.at(i);
-    m_visible = 2 * visible_indices.size();
   } else { // INTERPOLATED CONTOURS
-    std::vector<std::pair<Vector3f, Vector3f>> invisible_edges;
     invisible_edges.reserve(0.25 * m_interpolated_contours.cols());
-    std::vector<std::pair<Vector3f, Vector3f>> visible_edges;
     visible_edges.reserve(0.25 * m_interpolated_contours.cols());
-    for (uint32_t i = 0; i < m_interpolated_contours.cols() / 2; ++i) {
+    for (int i = 0; i < m_interpolated_contours.cols() / 2; ++i) {
       const Vector3f &p1 = m_interpolated_contours.col(2 * i);
       const Vector3f &p2 = m_interpolated_contours.col(2 * i + 1);
-      Vector3f dir = 0.5f * (p1 + p2) - view_pos;
-      uint32_t idx;
-      real_t t;
-      Ray ray = Ray(view_pos, dir.normalized(), 0, dir.norm());
-      bool hit = m_bvh->rayIntersect(ray, idx, t);
-      if (hit && int(idx) != m_interpolated_contour_faces[i]) {
-        ray_intersections.push_back(ray(t));
-        invisible_edges.push_back(std::make_pair(p1, p2));
-      } else {
-        visible_edges.push_back(std::make_pair(p1, p2));
-      }
+      rayCast(p1, p2, m_interpolated_contour_faces[i], -1);
     }
-    for (size_t i = 0; i < visible_edges.size(); ++i) {
-      m_interpolated_contours.col(i * 2) = visible_edges.at(i).first;
-      m_interpolated_contours.col(i * 2 + 1) = visible_edges.at(i).second;
-    }
-    for (size_t i = 0; i < invisible_edges.size(); ++i) {
-      m_interpolated_contours.col((i + visible_edges.size()) * 2) =
-          invisible_edges.at(i).first;
-      m_interpolated_contours.col((i + visible_edges.size()) * 2 + 1) =
-          invisible_edges.at(i).second;
-    }
-    m_visible = 2 * visible_edges.size();
   }
+
+  m_contour_sorted_by_visibility.clear();
+  m_contour_sorted_by_visibility.reserve(visible_edges.size() +
+                                         invisible_edges.size());
+  for (size_t i = 0; i < visible_edges.size(); ++i) {
+    m_contour_sorted_by_visibility.push_back(visible_edges.at(i).first);
+    m_contour_sorted_by_visibility.push_back(visible_edges.at(i).second);
+  }
+  for (size_t i = 0; i < invisible_edges.size(); ++i) {
+    m_contour_sorted_by_visibility.push_back(invisible_edges.at(i).first);
+    m_contour_sorted_by_visibility.push_back(invisible_edges.at(i).second);
+  }
+  m_nb_visible = 2 * visible_edges.size();
 }
 
-Matrix3Xf Mesh::get_contours(ContourMode mode, bool visible_only) {
+Matrix3Xf Mesh::get_contours(VisibilityMode visible) {
+  if (m_nb_visible == -1 && visible != VISIBLE_AND_INVISIBLE)
+    return Matrix3Xf();
+
+  switch (visible) {
+  case VISIBLE:
+    return MapXf(m_contour_sorted_by_visibility[0].data(), 3, m_nb_visible);
+  case INVISIBLE:
+    return MapXf(m_contour_sorted_by_visibility[m_nb_visible].data(), 3,
+                 m_contour_sorted_by_visibility.size() - m_nb_visible);
+  case VISIBLE_AND_INVISIBLE:
+    return MapXf(m_contour_sorted_by_visibility[0].data(), 3,
+                 m_contour_sorted_by_visibility.size());
+  default:
+    break;
+  }
+
+  return Matrix3Xf();
+}
+
+Matrix3Xf Mesh::get_chains(ContourMode mode) {
   if (mode == INTERPOLATED_CONTOUR) {
-    if (visible_only)
-      return m_interpolated_contours.topLeftCorner(3, m_visible);
-    return get_interpolated_contours();
+    return m_interpolated_contours;
   } else {
     auto vpositions = get_vertex_property<Vector3f>("v:point");
-
     Matrix3Xf contours = Matrix3Xf(3, m_chain_indices.size());
     for (size_t i = 0; i < m_chain_indices.size(); ++i) {
       Vertex v = Vertex(m_chain_indices[i]);
@@ -1278,11 +1272,13 @@ std::vector<Vector3f> &Mesh::get_debug_points(nature_t nature) {
     }
   }
 
-  m_debug_points.reserve(m_debug_points.size() + ray_intersections.size());
-  m_point_colors.reserve(m_point_colors.size() + ray_intersections.size());
-  for (size_t i = 0; i < ray_intersections.size(); i++) {
-    m_debug_points.push_back(ray_intersections.at(i));
-    m_point_colors.push_back(Vector3f(0.9, 0.0, 0.0));
+  if (nature & RAY_INTERSECTION) {
+    m_debug_points.reserve(m_debug_points.size() + ray_intersections.size());
+    m_point_colors.reserve(m_point_colors.size() + ray_intersections.size());
+    for (size_t i = 0; i < ray_intersections.size(); i++) {
+      m_debug_points.push_back(ray_intersections.at(i));
+      m_point_colors.push_back(Vector3f(0.9, 0.0, 0.0));
+    }
   }
 
   return m_debug_points;
