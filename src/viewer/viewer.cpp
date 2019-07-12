@@ -83,15 +83,24 @@ bool Viewer::load(const std::string &filename) {
   for (GEO::index_t i = 0; i < mesh_.vertices.nb(); i++) {
     const GEO::vec3 &p = mesh_.vertices.point(i);
     vertices[i] = m_backup_mesh->add_vertex(Vector3f(p.x, p.y, p.z));
+    assert(m_backup_mesh->is_valid(vertices[i]));
   }
 
   for (GEO::index_t f = 0; f < mesh_.facets.nb(); f++) {
-    m_backup_mesh->add_triangle(vertices[mesh_.facets.vertex(f, 0)],
-                                vertices[mesh_.facets.vertex(f, 1)],
-                                vertices[mesh_.facets.vertex(f, 2)]);
+    auto face =
+        m_backup_mesh->add_triangle(vertices[mesh_.facets.vertex(f, 0)],
+                                    vertices[mesh_.facets.vertex(f, 1)],
+                                    vertices[mesh_.facets.vertex(f, 2)]);
+    if (!m_backup_mesh->is_valid(face)) {
+      GEO::Logger::out("I/O") << "Unsupported mesh" << std::endl;
+      delete m_backup_mesh;
+      m_backup_mesh = nullptr;
+      return false;
+    }
   }
 
   m_backup_mesh->init();
+
   m_backup_mesh->tagConcaveEdges();
 
   mesh_.vertices.set_single_precision();
@@ -400,6 +409,9 @@ void Viewer::draw_scene() {
 
   SimpleMeshApplication::draw_scene();
 
+  if(m_backup_mesh == nullptr)
+    return;
+
   // Update contours
   if (m_mesh == nullptr || m_ContourMode != m_prev_ContourMode) {
     if (m_CameraMode == 0) {
@@ -613,6 +625,9 @@ void Viewer::draw_scene() {
 }
 
 void Viewer::extractContours(const Vector3f &view_pos) {
+  if (m_backup_mesh == nullptr)
+    return;
+
   try {
     ContourMode mode = ContourMode(m_ContourMode);
 

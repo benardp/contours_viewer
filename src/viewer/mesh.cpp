@@ -754,7 +754,7 @@ void Mesh::computeContourChains(ContourMode mode) {
       return Face();
     };
 
-    m_interpolated_contours = Matrix3Xf(3, sum + m_chains.size() * 2);
+    m_interpolated_contours = Matrix3Xf(3, sum);
     for (auto chain : m_chains) {
       SVertex *sv0, *sv1;
       sv0 = sv1 = nullptr;

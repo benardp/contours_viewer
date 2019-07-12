@@ -18,7 +18,7 @@ set(FULL_WARNINGS
 )
 
 # Compile with full warnings by default
-add_definitions(${FULL_WARNINGS})
+add_definitions(${NORMAL_WARNINGS})
 
 # Run the static analyzer
 if(VORPALINE_WITH_CLANGSA)
