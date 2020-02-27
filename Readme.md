@@ -4,6 +4,8 @@
 
 This viewer has been developed in support of the tutorial: *"Line Drawings from 3D Models"* by Pierre Bénard and Aaron Hertzmann ([pdf](https://arxiv.org/abs/1810.01175)).
 
+Alternatively, Bastien Wailly and Adrien Bousseau developed and released the 3D line rendering software [SynDraw](https://ns.inria.fr/d3/syndraw/index.html) taking inspiration from our tutorial.
+
 ## Usage
 
 A web version of this viewer is directly available following this link: https://benardp.github.io/contours_viewer/
